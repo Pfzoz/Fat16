@@ -74,8 +74,27 @@ root_entry_t *get_valid_entries(fat_BS_t boot_record, FILE *fp, int *valid_entri
 
 void print_root_entry_info(root_entry_t entry)
 {
-    printf("File Name: %s \n", entry.file_name);
+    printf("File Name (FULL): '%s' \n", entry.file_name);
+    printf("File Name - Name Only (first-byte): '%.8s' \n", entry.file_name);
+    printf("File Extension (3-last-bits): '%.3s' \n", entry.file_name + 8);
     printf("Attributes: %d \n", entry.attributes);
+    switch (entry.attributes) {
+        case 0x20:
+            printf("Type: Archive\n");
+            break;
+        case 0x20 | 0x01:
+            printf("Type: Read-Only Archive\n");
+            break;
+        case 0x20 | 0x02:
+            printf("Type: Hidden Archive\n");
+            break;
+        case 0x10:
+            printf("Type: Sub-Directory\n");
+            break;
+        default:
+            printf("Type: Unknown\n");
+            break;
+    }
     printf("Reserved Windows NT: %d \n", entry.reserved_windows_nt);
     printf("Creation Time: %d \n", entry.creation_time);
     printf("Time Creation: %d \n", entry.time_creation);
@@ -159,23 +178,24 @@ int main(int argc, char const *argv[])
 
     // Boot Record Info
 
+    printf("\n== BOOT RECORD INFO ==\n\n");
+
     printf("Boot record jump code: %c%c%c \n", boot_record.bootjmp[0], boot_record.bootjmp[1], boot_record.bootjmp[2]);
     printf("OEM name: %s \n", boot_record.oem_name);
     printf("Bytes per sector %hd \n", boot_record.bytes_per_sector);
     printf("Sector per cluster %x \n", boot_record.sectors_per_cluster);
     printf("Reserved sector count: %hu \n", boot_record.reserved_sector_count);
-    printf("Table count: %hu \n", boot_record.table_count);
+    printf("FAT16 Table Amount: %hu \n", boot_record.table_count);
     printf("Root entry count: %hu \n", boot_record.root_entry_count);
     printf("Total sectors 16: %hu \n", boot_record.total_sectors_16);
     printf("Media type: %x \n", boot_record.media_type);
-    printf("Table size 16: %hu \n", boot_record.table_size_16);
+    printf("Sectors per FAT16 Table: %hu \n", boot_record.table_size_16);
     printf("Sectors per track: %hu \n", boot_record.sectors_per_track);
     printf("Head side count: %hu \n", boot_record.head_side_count);
-    printf("Hidden sector count: %u \n", boot_record.hidden_sector_count);
+    printf("Reserved sector count: %u \n", boot_record.hidden_sector_count);
     printf("Total sectors 32: %u \n", boot_record.total_sectors_32);
 
     // Read Root Directory
-
     printf("\n== ROOT ENTRIES ==\n\n");
 
     int root_location = boot_record.bytes_per_sector * boot_record.reserved_sector_count + boot_record.bytes_per_sector * boot_record.table_size_16 * boot_record.table_count;
