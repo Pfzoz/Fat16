@@ -77,89 +77,83 @@ void print_root_entry_info(root_entry_t entry)
     printf("File Name (FULL): '%s' \n", entry.file_name);
     printf("File Name - Name Only (first-byte): '%.8s' \n", entry.file_name);
     printf("File Extension (3-last-bits): '%.3s' \n", entry.file_name + 8);
-    printf("Attributes: %d \n", entry.attributes);
-    switch (entry.attributes) {
-        case 0x20:
-            printf("Type: Archive\n");
-            break;
-        case 0x20 | 0x01:
-            printf("Type: Read-Only Archive\n");
-            break;
-        case 0x20 | 0x02:
-            printf("Type: Hidden Archive\n");
-            break;
-        case 0x10:
-            printf("Type: Sub-Directory\n");
-            break;
-        default:
-            printf("Type: Unknown\n");
-            break;
+    printf("Attributes: %x \n", entry.attributes);
+    switch (entry.attributes)
+    {
+    case 0x20:
+        printf("Type: Archive\n");
+        break;
+    case 0x20 | 0x01:
+        printf("Type: Read-Only Archive\n");
+        break;
+    case 0x20 | 0x02:
+        printf("Type: Hidden Archive\n");
+        break;
+    case 0x10:
+        printf("Type: Sub-Directory\n");
+        break;
+    default:
+        printf("Type: Unknown\n");
+        break;
     }
-    printf("Reserved Windows NT: %d \n", entry.reserved_windows_nt);
-    printf("Creation Time: %d \n", entry.creation_time);
-    printf("Time Creation: %d \n", entry.time_creation);
-    printf("Date Creation: %d \n", entry.date_creation);
-    printf("Last Accessed: %d \n", entry.last_accessed);
+    printf("Reserved Windows NT: %x \n", entry.reserved_windows_nt);
+    printf("Creation Time: %x \n", entry.creation_time);
+    printf("Time Creation: %x \n", entry.time_creation);
+    printf("Date Creation: %x \n", entry.date_creation);
+    printf("Last Accessed: %x \n", entry.last_accessed);
     printf("High First Cluster: %x \n", entry.high_first_cluster);
-    printf("Last Modification Time: %d \n", entry.last_modification_time);
-    printf("Last Modification Date: %d \n", entry.last_modification_date);
+    printf("Last Modification Time: %x \n", entry.last_modification_time);
+    printf("Last Modification Date: %x \n", entry.last_modification_date);
     printf("Low First Cluster: %x \n", entry.low_first_cluster);
-    printf("File Size: %d \n\n", entry.file_size);
+    printf("File Size: %x \n\n", entry.file_size);
 }
 
 unsigned short *get_clusters(root_entry_t entry, fat_BS_t boot_record, FILE *fp, int *clusters_size)
 {
     int fat_table_location = boot_record.bytes_per_sector * boot_record.reserved_sector_count;
     *clusters_size = 1;
+    printf("Getting clusters\n");
     unsigned short *clusters = malloc(*clusters_size * sizeof(unsigned short));
     unsigned short current_cluster = entry.low_first_cluster;
     clusters[0] = current_cluster;
-    printf("Iniciando Cluster Chain: %x\n", current_cluster);
     while (1)
     {
-        int cluster_location = fat_table_location + current_cluster * 2;
-        printf("Cluster atual: %x Localização: %d\n", current_cluster, cluster_location);
-        fseek(fp, fat_table_location + current_cluster * 2, SEEK_SET);
+        printf("Cluster: [ %d ]\n", current_cluster);
+        int cluster_location = fat_table_location + (current_cluster * 2);
+        fseek(fp, cluster_location, SEEK_SET);
         fread(&current_cluster, sizeof(unsigned short), 1, fp);
-        if (current_cluster == 0xFFFF || current_cluster == 0xFFF8)
+        if (current_cluster == 0xFFFF)
             break;
-        else
-        {
-            clusters = realloc(clusters, ++(*clusters_size) * sizeof(unsigned short));
-            clusters[*clusters_size - 1] = current_cluster;
-        }
+        *clusters_size += 1;
+        clusters = realloc(clusters, *clusters_size * sizeof(unsigned short));
+        clusters[*clusters_size - 1] = current_cluster;
     }
-    printf("Clusters finais (%d): [", *clusters_size);
-    for (int i = 0; i < *clusters_size; i++)
-        printf("%x ", clusters[i]);
-    printf("]\n");
     return clusters;
 }
 
-char *get_data(root_entry_t entry, fat_BS_t boot_record, FILE *fp, unsigned short *clusters, int clusters_size)
+char *get_data(root_entry_t entry, fat_BS_t boot_record, FILE *fp, unsigned short *clusters, int clusters_length)
 {
-    int root_location = boot_record.bytes_per_sector * boot_record.reserved_sector_count + boot_record.bytes_per_sector * boot_record.table_size_16 * boot_record.table_count;
-    int data_location = root_location + boot_record.root_entry_count * sizeof(root_entry_t);
+    int root_location = boot_record.bytes_per_sector * (boot_record.reserved_sector_count + (boot_record.table_size_16 * boot_record.table_count));
+    int data_location = root_location + boot_record.root_entry_count * 32;
     char *data = malloc(entry.file_size + 1);
     data[entry.file_size] = '\0';
     int cluster_size = boot_record.bytes_per_sector * boot_record.sectors_per_cluster;
     int temp_file_size = entry.file_size;
-    printf("Tamanho cluster: %d\n", cluster_size);
-    for (int i = 0; i < clusters_size; i++)
+    for (int i = 0; i < clusters_length; i++)
     {
         int cluster_shift = ((clusters[i] - 2) * boot_record.sectors_per_cluster * boot_record.bytes_per_sector);
         int cluster_location = data_location + cluster_shift;
-        printf("Cluster %d\n", cluster_location);
+        // printf("Cluster %d\n", cluster_location);
         fseek(fp, cluster_location, SEEK_SET);
-        if (i == clusters_size - 1)
+        if (i == clusters_length - 1)
         {
-            printf("Tamanho restante: %d\n", temp_file_size);
+            // printf("Tamanho restante: %d\n", temp_file_size);
             fread(&data[i * cluster_size], temp_file_size, 1, fp);
         }
         else
         {
             fread(&data[i * cluster_size], cluster_size, 1, fp);
-            printf("Tamanho atual: %d\n", temp_file_size);
+            // printf("Tamanho atual: %d\n", temp_file_size);
             temp_file_size -= cluster_size;
         }
     }
@@ -182,18 +176,18 @@ int main(int argc, char const *argv[])
 
     printf("Boot record jump code: %c%c%c \n", boot_record.bootjmp[0], boot_record.bootjmp[1], boot_record.bootjmp[2]);
     printf("OEM name: %s \n", boot_record.oem_name);
-    printf("Bytes per sector %hd \n", boot_record.bytes_per_sector);
+    printf("Bytes per sector %x \n", boot_record.bytes_per_sector);
     printf("Sector per cluster %x \n", boot_record.sectors_per_cluster);
-    printf("Reserved sector count: %hu \n", boot_record.reserved_sector_count);
-    printf("FAT16 Table Amount: %hu \n", boot_record.table_count);
-    printf("Root entry count: %hu \n", boot_record.root_entry_count);
-    printf("Total sectors 16: %hu \n", boot_record.total_sectors_16);
+    printf("Reserved sector count: %x \n", boot_record.reserved_sector_count);
+    printf("FAT16 Table Amount: %x \n", boot_record.table_count);
+    printf("Root entry count: %x \n", boot_record.root_entry_count);
+    printf("Total sectors 16: %x \n", boot_record.total_sectors_16);
     printf("Media type: %x \n", boot_record.media_type);
-    printf("Sectors per FAT16 Table: %hu \n", boot_record.table_size_16);
-    printf("Sectors per track: %hu \n", boot_record.sectors_per_track);
-    printf("Head side count: %hu \n", boot_record.head_side_count);
-    printf("Reserved sector count: %u \n", boot_record.hidden_sector_count);
-    printf("Total sectors 32: %u \n", boot_record.total_sectors_32);
+    printf("Sectors per FAT16 Table: %x \n", boot_record.table_size_16);
+    printf("Sectors per track: %x \n", boot_record.sectors_per_track);
+    printf("Head side count: %x \n", boot_record.head_side_count);
+    printf("Hidden sector count: %x \n", boot_record.hidden_sector_count);
+    printf("Total sectors 32: %x \n", boot_record.total_sectors_32);
 
     // Read Root Directory
     printf("\n== ROOT ENTRIES ==\n\n");
@@ -234,7 +228,9 @@ int main(int argc, char const *argv[])
             {
                 char *data = get_data(valid_entries[option - 1], boot_record, fp, clusters, clusters_size);
                 printf("\n== Conteúdo == (Um \\n extra)\n\n");
-                printf("%s\n", data);
+                for (int i = 0; i < valid_entries[option - 1].file_size; i++)
+                    printf("%c", data[i]);
+                printf("\n");
                 free(data);
                 free(clusters);
             }
